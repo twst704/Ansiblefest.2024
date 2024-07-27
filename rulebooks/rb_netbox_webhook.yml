@@ -1,0 +1,44 @@
+---
+
+- name: Netbox Webhook
+  hosts: all
+  sources:
+    - name: netbox webhook
+      ansible.eda.webhook:
+        host: 0.0.0.0
+        port: 5000
+        hmac_secret: 'ansiblefest2024'
+        hmac_header: 'X-Hook-Signature'
+        hmac_format: hex
+        hmac_algo: sha512
+  rules:
+    - name: Match sw version and set fact
+      condition: >-
+        event.payload.data.custom_fields.available_sw_version is defined and
+        event.payload.data.custom_fields.current_sw_version is defined and
+        event.payload.data.custom_fields.initiate_upgrade == 'upgrade'
+
+      action:
+        set_fact:
+          fact:
+            current_sw: "{{ event.payload.data.custom_fields.current_sw_version }}"
+            available_cloud_sw: "{{ event.payload.data.custom_fields.available_sw_version }}-cloud"
+            available_sw: "{{ event.payload.data.custom_fields.available_sw_version }}"
+            initiate: "{{ event.payload.data.custom_fields.initiate_upgrade }}"
+            device_name: "{{ event.payload.data.name }}"
+
+    - name: Match_EOS_SW_Version
+      condition: >-
+        fact.current_sw != fact.available_cloud_sw and
+        fact.current_sw != fact.available_sw and
+        fact.initiate == 'upgrade' and
+        fact.device_name is defined
+
+      action:
+        run_job_template:
+          name: arista-initiate-swim
+          organization: Default
+          job_args:
+            extra_vars:
+              dut: "{{ event.device_name }}"
+              sw_version: "{{ event.available_sw }}"

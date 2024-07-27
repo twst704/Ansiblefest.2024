@@ -1,0 +1,119 @@
+---
+- name: arista-testing
+  hosts: all
+  execution_strategy: parallel
+  sources:
+    - name: kafka event source
+      ansible.eda.kafka:
+        host: 192.168.2.32
+        port: 9092
+        topic: ansiblefest2024
+
+  rules:
+
+    # Rule to kick off arista interface testing
+    - name: Match Interface tests
+      condition: event.body.test_name ==  'arista_test_interfaces'
+      action:
+        run_job_template:
+          name: Arista-test-interfaces
+          organization: Default
+          job_args:
+            extra_vars:
+              dut: "{{ event.body.device_name }}"
+
+
+    # Rule to kick off arista routing testing
+    - name: Match routing tests
+      condition: event.body.test_name ==  'arista_test_routing'
+      action:
+        run_job_template:
+          name: Arista-test-routing
+          organization: Default
+          job_args:
+            extra_vars:
+              dut: "{{ event.body.device_name }}"
+
+    # Rule to kick off arista HTTP testing
+    - name: Match http tests
+      condition: event.body.test_name ==  'arista_test_http'
+      action:
+        run_job_template:
+          name: Arista-http-tests
+          organization: Default
+          job_args:
+            extra_vars:
+              dut: "{{ event.body.device_name }}"
+
+    # Rule to kick off sw version testing
+    - name: Match sw version tests
+      condition: event.body.test_name == 'arista_test_sw_version'
+      action:
+        run_job_template:
+          name: Arista-test-sw-version
+          organization: Default
+          job_args:
+            extra_vars:
+              dut: "{{ event.body.device_name }}"
+              sw_version: "{{ event.body.sw_version }}"
+
+    - name: Match upgrade events
+      condition:
+        all:
+          - >-
+            event.body.upgrade.device_name is defined and
+            event.body.upgrade.upgrade_status == "arista_sw_upgrade_authorized" and
+            event.body.upgrade.sw_version is defined
+          - event.body.test_status == "Interface_tests_passed"
+          - event.body.test_status == "HTTP_tests_passed"
+          - event.body.test_status == "Routing_tests_passed"
+        timeout: 2 minutes
+
+      action:
+        run_job_template:
+          name: Arista-upgrade-device
+          organization: Default
+          job_args:
+            extra_vars:
+              dut: "{{ events.m_0.body.upgrade.device_name }}"
+              sw_version: "{{ events.m_0.body.upgrade.sw_version }}"
+
+    - name: Match post upgrade events
+      condition: >-
+          event.body.upgrade_status == "post" and
+          event.body.dut is defined and
+          event.body.sw_version is defined
+      throttle:
+        once_within: 2 minutes
+        group_by_attributes:
+          - event.body.dut
+
+      action:
+        run_job_template:
+          name: Arista-post-upgrade
+          organization: Default
+          job_args:
+            extra_vars:
+              dut: "{{ event.body.dut }}"
+              sw_version: "{{ event.body.sw_version }}"
+
+    - name: Match SWIM cleanup events
+      condition:
+        all:
+          - >-
+            event.body.upgrade.device_name is defined and
+            event.body.upgrade.upgrade_status == "complete"
+          - event.body.test_status == "Interface_tests_passed"
+          - event.body.test_status == "HTTP_tests_passed"
+          - event.body.test_status == "Routing_tests_passed"
+          - event.body.test_status == "upgrade_sw_version_passed"
+        timeout: 2 minutes
+
+      action:
+        run_job_template:
+          name: Arista-swim-cleanup
+          organization: Default
+          job_args:
+            extra_vars:
+              dut: "{{ events.m_0.body.upgrade.device_name }}"
+              # sw_version: "{{ events.m_0.body.upgrade.sw_version }}"

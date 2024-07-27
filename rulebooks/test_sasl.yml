@@ -1,0 +1,20 @@
+---
+- name: Test Auth
+  hosts: all
+  sources:
+    - name: kafka event source
+      ansible.eda.kafka:
+        host: 192.168.2.32
+        port: 9092
+        topic: apache
+        sasl_plain_username: "{{ sasl_username }}"
+        sasl_plain_password: "{{ sasl_password }}"
+        security_protocol: SASL_PLAINTEXT
+
+  rules:
+    - name: Match sw_upgrade
+      condition: event.body.test_auth ==  'message-received'
+
+      action:
+        print_event:
+          pretty: true

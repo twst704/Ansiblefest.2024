@@ -1,0 +1,17 @@
+---
+
+- name: Add custom field for arista version
+  netbox.netbox.netbox_custom_field:
+    netbox_url: "{{ netbox_api }}"
+    netbox_token: "{{ netbox_token }}"
+    validate_certs: false
+    data:
+      content_types:
+        - dcim.device
+      ui_visibility: read-only
+      name: "{{ new_custom_field }}"
+      type: text
+    state: "{{ state | default('present') }}"
+  delegate_to: localhost
+  tags: custom
+  when: hostvars[inventory_hostname]['current_sw_Version'] is undefined
